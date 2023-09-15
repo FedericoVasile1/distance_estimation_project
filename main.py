@@ -90,18 +90,18 @@ def parse_args(default: bool = False) -> argparse.Namespace:
     parser.add_argument('--exp_log_path', type=str, default=None)
 
     # MODEL
-    parser.add_argument('--lr', type=float, default=1e-4)
+    parser.add_argument('--lr', type=float, default=5e-5)
     parser.add_argument('--optimizer', type=str, default='adam', choices=('adam', 'sgd'))
     parser.add_argument('--weight_decay', type=float, default=1e-5)
     parser.add_argument('--grad_clip', type=float, default=1.)
     parser.add_argument('--scheduler', type=str, default='cosine', choices=('cosine', 'plateau', 'none'))
-    parser.add_argument('--batch_size', type=int, default=2)
+    parser.add_argument('--batch_size', type=int, default=4)
     parser.add_argument('--n_workers', type=int, default=4)
     parser.add_argument('--max_patience', type=int, default=20)
     parser.add_argument('--epochs', type=int, default=100)
     parser.add_argument('--accumulation_steps', type=check_positive(), default=4)
-    parser.add_argument('--model', type=str, choices=MODELS.keys(), default='multiframe_regressor')
-    parser.add_argument('--loss', type=str, default='gaussian', choices=("l1", "mse", "laplacian", "gaussian"))
+    parser.add_argument('--model', type=str, choices=MODELS.keys(), default='zhu')
+    parser.add_argument('--loss', type=str, default='l1', choices=("l1", "mse", "laplacian", "gaussian"))
     parser.add_argument('--nearness', action='store_true', default=False)
     parser.add_argument('--fp16', action='store_true', default=False)
     parser.add_argument('--random_crop', action='store_true', default=False)
@@ -113,7 +113,7 @@ def parse_args(default: bool = False) -> argparse.Namespace:
 
     # Backbone
     parser.add_argument('--backbone', type=str,
-                        default='resnetfpn34', choices=BACKBONES.keys())
+                        default='resnet34', choices=BACKBONES.keys())
     parser.add_argument('--shallow', action='store_true',
                         default=False, help='Stop at Layer 3 (only Resnet)')
     parser.add_argument("--pretrain", default="imagenet",
@@ -132,7 +132,7 @@ def parse_args(default: bool = False) -> argparse.Namespace:
 
     # Regressor
     parser.add_argument('--regressor', type=str,
-                        default='roi_pooling', choices=REGRESSORS.keys())
+                        default='simple_roi', choices=REGRESSORS.keys())
     parser.add_argument('--pool_size', type=int, nargs='+', default=(8, 8), )
     parser.add_argument('--adjacency', type=str, default='iou', choices=('distance', 'iou'),
                         help='Adjacency matrix type (only for ROI GCN')

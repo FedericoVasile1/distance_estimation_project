@@ -234,8 +234,9 @@ class TrainerRegressor(Trainer):
         # save best model
         if self.best_test_rmse_linear is None or current_rmse < self.best_test_rmse_linear:
             self.best_test_rmse_linear = current_rmse
-            if self.cnf.distributed and self.cnf.rank == 0:
-                self.model.module.save_w(self.log_path / 'best.pth')
+            if torch.distributed.is_initialized():
+                if self.cnf.rank == 0:
+                    self.model.module.save_w(self.log_path / 'best.pth')
             else:
                 self.model.save_w(self.log_path / 'best.pth', self.cnf)
             self.patience = self.cnf.max_patience

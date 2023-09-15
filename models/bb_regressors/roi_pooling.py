@@ -32,7 +32,7 @@ class ROIPooling(nn.Module):
         B = x.shape[0]
 
         roi_indices = torch.repeat_interleave(torch.arange(0, B),
-                                              torch.tensor([len(b) for b in bboxes], requires_grad=False))
+                                              torch.tensor([len(b) for b in bboxes], requires_grad=False)).to(x.device)
         roi_bboxes = torch.cat(bboxes)
         rois = torch.cat([roi_indices[:, None].float(), roi_bboxes], dim=1).to(x.device)
         x = self.roi_pooling_op(input=x, boxes=rois.type_as(x), output_size=self.pool_size, spatial_scale=scale)
