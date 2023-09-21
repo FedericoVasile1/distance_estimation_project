@@ -116,6 +116,8 @@ def parse_args(default: bool = False) -> argparse.Namespace:
 
     parser.add_argument("--img_featmap", action="store_true", default=False)
 
+    parser.add_argument("--freeze_at", type=int, default=0)
+
     # Backbone
     parser.add_argument('--backbone', type=str,
                         default='resnet34', choices=BACKBONES.keys())

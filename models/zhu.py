@@ -36,6 +36,16 @@ class ZHU(BaseLifter):
                                                     pool_size=2,
                                                     roi_op=args.roi_op,)
 
+        # args.freeze_at == 0 means all unfreezed
+        # args.freeze_at == 1 means freeze up to first layer (included)
+        # etc..
+        
+        # TODO should be moved in backbone
+        for layer_idx in range(1, args.freeze_at + 1):
+            layer = getattr(self.backbone.resnet, f'layer{layer_idx}')
+            for param in layer.parameters():
+                param.requires_grad = False
+
         feat_vect_size = self.backbone.output_size * 2 * 2
         if args.img_featmap:
             feat_vect_size += self.backbone.output_size
