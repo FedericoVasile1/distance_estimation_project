@@ -159,9 +159,9 @@ def parse_args(default: bool = False) -> argparse.Namespace:
     parser.add_argument('--use_debug_dataset',
                         action='store_true', default=False)
     parser.add_argument('--test_sampling_stride',
-                        type=check_positive(), default=400)
+                        type=check_positive(), default=1)
     parser.add_argument('--train_sampling_stride',
-                        type=check_positive(), default=50)
+                        type=check_positive(), default=1)
     parser.add_argument('--c_map_loss_mul', type=float, default=100.0)
     parser.add_argument('--h_map_loss_mul', type=float, default=1.0)
     parser.add_argument('--w_map_loss_mul', type=float, default=1.0)
@@ -175,7 +175,7 @@ def parse_args(default: bool = False) -> argparse.Namespace:
     parser.add_argument('--crop_mode', type=str,
                         default='random', choices=('random', 'center'))
     parser.add_argument('--clip_len', type=int, default=1)
-    parser.add_argument('--max_stride', type=int, default=8)
+    parser.add_argument('--max_stride', type=int, default=8)        # TODO ??
     parser.add_argument('--stride_sampling', type=str,
                         default='fixed', choices=('fixed', 'normal', 'uniform'))
     parser.add_argument('--sampling', type=str,
