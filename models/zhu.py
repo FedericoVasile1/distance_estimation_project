@@ -3,7 +3,7 @@ import argparse
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from einops import rearrange
+from einops import rearrange, reduce
 
 from trainers.base_trainer import Trainer
 from models.backbones import BACKBONES
@@ -36,10 +36,17 @@ class ZHU(BaseLifter):
                                                     pool_size=2,
                                                     roi_op=args.roi_op,)
 
+        feat_vect_size = self.backbone.output_size * 2 * 2
+        if args.img_featmap:
+            feat_vect_size += self.backbone.output_size
+            self.img_featmap = True
+        else:
+            self.img_featmap = False
+
         if args.rnn:
             self.rnn_hidden_size = args.rnn_hidden_size
             self.rnn = nn.LSTMCell(
-                self.backbone.output_size * 2 * 2, self.rnn_hidden_size
+                feat_vect_size, self.rnn_hidden_size
             )
             self.dropout = nn.Dropout(p=0.1)
             self.classifier = nn.Linear(self.rnn_hidden_size, self.output_size)
@@ -47,8 +54,8 @@ class ZHU(BaseLifter):
             self.rnn = None
 
             self.distance_estimator = nn.Sequential(
-                nn.Flatten(),
-                nn.Linear(self.backbone.output_size * 2 * 2, 1024),
+                nn.Identity() if self.img_featmap else nn.Flatten(),
+                nn.Linear(feat_vect_size, 1024),
                 nn.ReLU(),
                 nn.Linear(1024, 512),
                 nn.ReLU(),
@@ -57,8 +64,8 @@ class ZHU(BaseLifter):
 
         if self.enhanced:
             self.keypoint_regressor = nn.Sequential(
-                nn.Flatten(),
-                nn.Linear(self.backbone.output_size * 2 * 2, 1024),
+                nn.Identity() if self.img_featmap else nn.Flatten(),
+                nn.Linear(feat_vect_size, 1024),
                 nn.ReLU(),
                 nn.Linear(1024, 512),
                 nn.ReLU(),
@@ -71,9 +78,21 @@ class ZHU(BaseLifter):
         x = rearrange(x, 'b c 1 h w -> b c h w')
         x = self.backbone(x)
 
+        if self.img_featmap:
+            x_gblavg = reduce(x, 'b c h w -> b c', reduction="mean")
+            x_gblavg_bboxes = torch.repeat_interleave(
+                x_gblavg,
+                torch.tensor([len(b) for b in bboxes]).to(x.device),
+                dim=0
+            )
+
         x = self.regressor(x, bboxes, scale=x.shape[-1] / W)
 
         if self.rnn is None:
+            if self.img_featmap:
+                x = x.flatten(start_dim=1)
+                x = torch.cat([x, x_gblavg_bboxes], dim=-1)
+
             z = self.distance_estimator(x).squeeze(-1)
         else:
             # NOTE: every bboxes elem (i.e. the bounding boxes in the image)
@@ -102,10 +121,11 @@ class ZHU(BaseLifter):
             c_n = torch.zeros_like(h_n).to(device=x.device, dtype=x.dtype)
             z = torch.zeros(b_size, n_steps).to(x.device, x.dtype)
             for step in range(x.shape[1]):
-                h_n, c_n = self.rnn(
-                    self.dropout(x[:, step].flatten(start_dim=1)), 
-                    (h_n, c_n)
-                ) 
+                x_step = x[:, step].flatten(start_dim=1)
+                if self.img_featmap:
+                    x_step = torch.cat([x_step, x_gblavg], dim=-1)
+                
+                h_n, c_n = self.rnn(self.dropout(x_step), (h_n, c_n)) 
                 temp = self.classifier(self.dropout(h_n)).squeeze()
                 z[:, step] = temp
             z = z.reshape(-1)

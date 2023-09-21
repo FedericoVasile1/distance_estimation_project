@@ -111,6 +111,11 @@ def parse_args(default: bool = False) -> argparse.Namespace:
     parser.add_argument('--use_geom', action='store_true', default=False)
     parser.add_argument('--roi_op', type=str, default='pool', choices=('align', 'pool'))
 
+    parser.add_argument('--rnn', action='store_true', default=False)
+    parser.add_argument('--rnn_hidden_size', type=int, default=512)
+
+    parser.add_argument("--img_featmap", action="store_true", default=False)
+
     # Backbone
     parser.add_argument('--backbone', type=str,
                         default='resnet34', choices=BACKBONES.keys())
@@ -195,9 +200,6 @@ def parse_args(default: bool = False) -> argparse.Namespace:
     parser.add_argument('--long_range', action='store_true',
                         default=False)
     parser.add_argument('--use_centers_gt', action='store_true', default=True)
-
-    parser.add_argument('--rnn', action='store_true', default=False)
-    parser.add_argument('--rnn_hidden_size', type=int, default=512)
 
     return parser.parse_args([] if default else None)
 
