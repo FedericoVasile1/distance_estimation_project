@@ -119,7 +119,7 @@ class TrainerMLP(Trainer):
                                   long_range=self.cnf.long_range)
 
             if wandb.run:
-                wandb.log({'acc': acc,
+                wandb.log({'acc': acc / n_samples,
                            'error_mean': mean_error,
                            'test_loss': tot_loss / len(self.test_loader),
                            'epoch': self.epoch,
