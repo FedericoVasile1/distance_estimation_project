@@ -196,6 +196,9 @@ def parse_args(default: bool = False) -> argparse.Namespace:
                         default=False)
     parser.add_argument('--use_centers_gt', action='store_true', default=True)
 
+    parser.add_argument('--rnn', action='store_true', default=False)
+    parser.add_argument('--rnn_hidden_size', type=int, default=512)
+
     return parser.parse_args([] if default else None)
 
 

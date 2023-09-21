@@ -69,6 +69,53 @@ class TrainerRegressor(Trainer):
                 y_true = z_to_nearness(y_true) if self.cnf.nearness else y_true
 
                 with torch.autocast(self.cnf.device.split(':')[0], enabled=self.cnf.fp16, dtype=torch.float16):
+                    if self.cnf.rnn:
+                        ## 1. sort boxes by height
+                        max_img_bboxes = -1
+                        pointer = 0
+                        for idx in range(len(last_frame_bboxes)):
+                            img_bboxes = last_frame_bboxes[idx]
+                            # x1 x2 to x1 w
+                            img_bboxes[:, 2] = img_bboxes[:, 2] - img_bboxes[:, 0]  
+                            # y1 y2 to y1 h
+                            img_bboxes[:, 3] = img_bboxes[:, 3] - img_bboxes[:, 1]
+
+                            # sort by height
+                            _, indices = torch.sort(
+                                img_bboxes[:, 3], descending=True
+                            )
+                            img_bboxes = img_bboxes[indices]
+                            last_frame_bboxes[idx] = img_bboxes
+
+                            # re-sort labels accordingly
+                            n_img_bboxes = img_bboxes.shape[0]
+                            indices += pointer
+                            y_true[pointer:pointer+n_img_bboxes] = y_true[indices]
+                            pointer += n_img_bboxes
+
+                            if n_img_bboxes > max_img_bboxes:
+                                max_img_bboxes = n_img_bboxes
+
+                        for idx in range(len(last_frame_bboxes)):
+                            img_bboxes = last_frame_bboxes[idx]
+                            # x1 w to x1 x2
+                            img_bboxes[:, 2] = img_bboxes[:, 2] + img_bboxes[:, 0]
+                            # y1 h to y1 y2
+                            img_bboxes[:, 3] = img_bboxes[:, 3] + img_bboxes[:, 1]
+                            last_frame_bboxes[idx] = img_bboxes
+
+                        ## 2. pad labels with zeros up to maximum num of boxes in image
+                        b_size = x.shape[0]
+                        y_true_padded = torch.zeros(b_size, max_img_bboxes)
+                        y_true_padded = y_true_padded.to(y_true.device, y_true.dtype)
+
+                        pointer = 0
+                        for idx in range(len(last_frame_bboxes)):
+                            n_img_bboxes = last_frame_bboxes[idx].shape[0]
+                            y_true_padded[idx, :n_img_bboxes] = y_true[pointer:pointer + n_img_bboxes]
+                            pointer += n_img_bboxes
+                        y_true = y_true_padded.reshape(-1)
+
                     output = self.model(x, last_frame_bboxes)
 
                     loss = loss_fun(y_pred=output, y_true=y_true,
@@ -157,10 +204,58 @@ class TrainerRegressor(Trainer):
 
                 x = x.to(self.cnf.device)
 
-                output = self.model(x, last_frame_bboxes)
-
                 y_true = last_frame_distances.view(-1).to(self.cnf.device)
                 y_true = z_to_nearness(y_true) if self.cnf.nearness else y_true
+
+                if self.cnf.rnn:
+                    ## 1. sort boxes by height
+                    max_img_bboxes = -1
+                    pointer = 0
+                    for idx in range(len(last_frame_bboxes)):
+                        img_bboxes = last_frame_bboxes[idx]
+                        # x1 x2 to x1 w
+                        img_bboxes[:, 2] = img_bboxes[:, 2] - img_bboxes[:, 0]  
+                        # y1 y2 to y1 h
+                        img_bboxes[:, 3] = img_bboxes[:, 3] - img_bboxes[:, 1]
+
+                        # sort by height
+                        _, indices = torch.sort(
+                            img_bboxes[:, 3], descending=True
+                        )
+                        img_bboxes = img_bboxes[indices]
+                        last_frame_bboxes[idx] = img_bboxes
+
+                        # re-sort labels accordingly
+                        n_img_bboxes = img_bboxes.shape[0]
+                        indices += pointer
+                        y_true[pointer:pointer+n_img_bboxes] = y_true[indices]
+                        pointer += n_img_bboxes
+
+                        if n_img_bboxes > max_img_bboxes:
+                            max_img_bboxes = n_img_bboxes
+
+                    for idx in range(len(last_frame_bboxes)):
+                        img_bboxes = last_frame_bboxes[idx]
+                        # x1 w to x1 x2
+                        img_bboxes[:, 2] = img_bboxes[:, 2] + img_bboxes[:, 0]
+                        # y1 h to y1 y2
+                        img_bboxes[:, 3] = img_bboxes[:, 3] + img_bboxes[:, 1]
+                        last_frame_bboxes[idx] = img_bboxes
+
+                    ## 2. pad labels with zeros up to maximum num of boxes in image
+                    b_size = x.shape[0]
+                    y_true_padded = torch.zeros(b_size, max_img_bboxes)
+                    y_true_padded = y_true_padded.to(y_true.device, y_true.dtype)
+
+                    pointer = 0
+                    for idx in range(len(last_frame_bboxes)):
+                        n_img_bboxes = last_frame_bboxes[idx].shape[0]
+                        y_true_padded[idx, :n_img_bboxes] = y_true[pointer:pointer + n_img_bboxes]
+                        pointer += n_img_bboxes
+                    y_true = y_true_padded.reshape(-1)
+
+                output = self.model(x, last_frame_bboxes)
+
                 loss = loss_fun(y_pred=output, y_true=y_true,
                                 bboxes=last_frame_bboxes)
                 dists_pred, dists_vars = self.post_process(output)

@@ -36,14 +36,24 @@ class ZHU(BaseLifter):
                                                     pool_size=2,
                                                     roi_op=args.roi_op,)
 
-        self.distance_estimator = nn.Sequential(
-            nn.Flatten(),
-            nn.Linear(self.backbone.output_size * 2 * 2, 1024),
-            nn.ReLU(),
-            nn.Linear(1024, 512),
-            nn.ReLU(),
-            nn.Linear(512, self.output_size),
-        )
+        if args.rnn:
+            self.rnn_hidden_size = args.rnn_hidden_size
+            self.rnn = nn.LSTMCell(
+                self.backbone.output_size * 2 * 2, self.rnn_hidden_size
+            )
+            self.dropout = nn.Dropout(p=0.1)
+            self.classifier = nn.Linear(self.rnn_hidden_size, self.output_size)
+        else:
+            self.rnn = None
+
+            self.distance_estimator = nn.Sequential(
+                nn.Flatten(),
+                nn.Linear(self.backbone.output_size * 2 * 2, 1024),
+                nn.ReLU(),
+                nn.Linear(1024, 512),
+                nn.ReLU(),
+                nn.Linear(512, self.output_size),
+            )
 
         if self.enhanced:
             self.keypoint_regressor = nn.Sequential(
@@ -57,12 +67,49 @@ class ZHU(BaseLifter):
 
     def forward(self, x: torch.Tensor, bboxes: torch.Tensor) -> torch.Tensor:
         W = x.shape[-1]
+        B = x.shape[0]
         x = rearrange(x, 'b c 1 h w -> b c h w')
         x = self.backbone(x)
 
         x = self.regressor(x, bboxes, scale=x.shape[-1] / W)
 
-        z = self.distance_estimator(x).squeeze(-1)
+        if self.rnn is None:
+            z = self.distance_estimator(x).squeeze(-1)
+        else:
+            # NOTE: every bboxes elem (i.e. the bounding boxes in the image)
+            #       is assumed to be sorted by bounding box height
+
+            # 1. pad roi with zeros up to maximum num of boxes in image
+            max_img_bboxes = -1
+            for img_bboxes in bboxes:
+                if img_bboxes.shape[0] > max_img_bboxes:
+                    max_img_bboxes = img_bboxes.shape[0]
+            feat_map_shape = x.shape[1:]
+            x_padded = torch.zeros(B, max_img_bboxes, *feat_map_shape).to(x.device, x.dtype)
+
+            pointer = 0
+            for idx in range(len(bboxes)):
+                n_img_bboxes = bboxes[idx].shape[0]
+                x_padded[idx, :n_img_bboxes] = x[pointer:pointer + n_img_bboxes]
+                pointer += n_img_bboxes
+            x = x_padded
+
+            # x.shape (bsize, max_img_bboxes, CC, HH, WW)
+            
+            # 2. forward boxes in rnn step by step
+            b_size, n_steps = x.shape[:2]
+            h_n = torch.zeros(b_size, self.rnn_hidden_size).to(x.device, x.dtype)
+            c_n = torch.zeros_like(h_n).to(device=x.device, dtype=x.dtype)
+            z = torch.zeros(b_size, n_steps).to(x.device, x.dtype)
+            for step in range(x.shape[1]):
+                h_n, c_n = self.rnn(
+                    self.dropout(x[:, step].flatten(start_dim=1)), 
+                    (h_n, c_n)
+                ) 
+                temp = self.classifier(self.dropout(h_n)).squeeze()
+                z[:, step] = temp
+            z = z.reshape(-1)
+
         if self.loss in ('gaussian', 'laplacian'):
             mu = F.softplus(z[..., 0])
             logvar = z[..., 1]
